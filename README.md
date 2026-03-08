@@ -11,7 +11,8 @@ cp .env.example .env
 # Заполни .env своими ключами
 docker compose up --build
 ```
-- Бэкенд: http://localhost:8000
+- Фронтенд: http://localhost:3000
+- Бэкенд API: http://localhost:8000
 - Swagger UI: http://localhost:8000/docs
 
 ### Локально (без Docker)
