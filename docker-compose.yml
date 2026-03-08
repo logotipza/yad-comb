@@ -43,5 +43,18 @@ services:
     volumes:
       - ./backend:/app # hot-reload в dev
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Запросы из браузера пользователя будут идти на localhost:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    depends_on:
+      - backend
+
 volumes:
   pg_data:
