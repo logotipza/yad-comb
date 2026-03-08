@@ -7,6 +7,10 @@ from fastapi import APIRouter, HTTPException
 
 from app.llm.registry import llm_registry
 from app.core.config import settings
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
+from app.core.keys import get_db_key
 
 router = APIRouter(prefix="/llm", tags=["LLM Gateway"])
 
@@ -35,10 +39,10 @@ async def list_providers():
 
 
 @router.post("/generate", response_model=GenerateResponse)
-async def generate(req: GenerateRequest):
+async def generate(req: GenerateRequest, db: AsyncSession = Depends(get_db)):
     """Генерация текста через выбранного LLM-провайдера."""
     # Подбираем kwargs для конструктора провайдера
-    provider_kwargs = _get_provider_kwargs(req.provider)
+    provider_kwargs = await _get_provider_kwargs(req.provider, db)
 
     try:
         provider = llm_registry.get_provider(req.provider, **provider_kwargs)
@@ -66,26 +70,32 @@ async def generate(req: GenerateRequest):
     )
 
 
-def _get_provider_kwargs(provider_name: str) -> dict:
-    """Получить kwargs для конструктора провайдера из настроек."""
+async def _get_provider_kwargs(provider_name: str, db: AsyncSession) -> dict:
+    """Получить kwargs для конструктора провайдера из БД."""
     if provider_name == "yandexgpt":
-        if not settings.yandex_gpt_api_key:
+        api_key = await get_db_key(db, "yandexgpt") or settings.yandex_gpt_api_key
+        folder_id = await get_db_key(db, "yandex_gpt_folder_id") or settings.yandex_gpt_folder_id
+        
+        if not api_key:
             raise HTTPException(
                 status_code=400,
                 detail="API-ключ YandexGPT не настроен. Укажите в настройках.",
             )
         return {
-            "api_key": settings.yandex_gpt_api_key,
-            "folder_id": settings.yandex_gpt_folder_id,
+            "api_key": api_key,
+            "folder_id": folder_id,
         }
     elif provider_name == "gigachat":
-        if not settings.gigachat_credentials:
+        credentials = await get_db_key(db, "gigachat") or settings.gigachat_credentials
+        scope = await get_db_key(db, "gigachat_scope") or settings.gigachat_scope
+        
+        if not credentials:
             raise HTTPException(
                 status_code=400,
                 detail="Credentials GigaChat не настроены. Укажите в настройках.",
             )
         return {
-            "credentials": settings.gigachat_credentials,
-            "scope": settings.gigachat_scope,
+            "credentials": credentials,
+            "scope": scope,
         }
     return {}
