@@ -1,6 +1,18 @@
-import Link from "next/link";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { toast } from "@/lib/store";
 
 export default function AuthPage() {
+  const router = useRouter();
+
+  const handleLogin = () => {
+    toast.info("Внимание", "В режиме MVP токены добавляются вручную. Перенаправляем...");
+    setTimeout(() => {
+      router.push("/settings");
+    }, 1500);
+  };
+
   return (
     <div className="screen-center">
       {/* Top Header */}
@@ -21,12 +33,10 @@ export default function AuthPage() {
         </div>
 
         <div>
-          <Link href="/dashboard" style={{ width: "100%", display: "block" }}>
-            <button className="btn btn-yandex">
-              <span className="ya-icon">Я</span>
-              Войти через Яндекс
-            </button>
-          </Link>
+          <button className="btn btn-yandex" onClick={handleLogin} style={{ width: "100%", display: "block" }}>
+            <span className="ya-icon">Я</span>
+            Войти через Яндекс
+          </button>
         </div>
 
         <p className="hint text-center">
