@@ -1,34 +1,100 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "@/lib/store";
+import { api, ApiKey } from "@/lib/api";
+import { Loader2, Save } from "lucide-react";
 
 export default function SettingsPage() {
-    const [yandexActive, setYandexActive] = useState(true);
-    const [gigaActive, setGigaActive] = useState(false);
+    const [keys, setKeys] = useState<Record<string, ApiKey>>({});
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
 
-    const toggleYandex = () => {
-        setYandexActive(!yandexActive);
-        if (!yandexActive) {
-            toast.success("YandexGPT активирован", "Модель выбрана по умолчанию для генерации");
-        } else {
-            toast.info("YandexGPT отключен");
+    // Form states
+    const [formValues, setFormValues] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        loadKeys();
+    }, []);
+
+    const loadKeys = async () => {
+        try {
+            const data = await api.settings.getKeys();
+            const keysMap: Record<string, ApiKey> = {};
+            data.forEach((k: ApiKey) => {
+                keysMap[k.service] = k;
+            });
+            setKeys(keysMap);
+        } catch (error: any) {
+            toast.error("Ошибка", error.message);
+        } finally {
+            setLoading(false);
         }
     };
 
-    const toggleGiga = () => {
-        setGigaActive(!gigaActive);
-        if (!gigaActive) {
-            toast.success("GigaChat активирован", "Токен будет использоваться для генерации");
-        } else {
-            toast.info("GigaChat отключен");
+    const handleSave = async (service: string) => {
+        const val = formValues[service];
+        if (!val) {
+            toast.error("Ошибка", "Поле не может быть пустым");
+            return;
         }
+
+        setSaving(true);
+        try {
+            const updated = await api.settings.saveKey(service, val);
+            setKeys(prev => ({ ...prev, [service]: updated }));
+            setFormValues(prev => ({ ...prev, [service]: "" })); // Clear input
+            toast.success("Сохранено", `Ключ для ${service} успешно обновлен`);
+        } catch (error: any) {
+            toast.error("Ошибка сохранения", error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "50vh" }}>
+                <Loader2 className="animate-spin" size={32} color="var(--brand-yellow)" />
+            </div>
+        );
+    }
+
+    const renderKeyInput = (service: string, label: string, placeholder: string = "Введите новый ключ...") => {
+        const keyInfo = keys[service];
+        const isConfigured = keyInfo?.is_configured;
+
+        return (
+            <div style={{ marginBottom: "1rem" }}>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "bold", marginBottom: "0.5rem" }}>
+                    {label} {isConfigured && <span style={{ color: "var(--brand-green)" }}>(Настроено: {keyInfo.masked_key})</span>}
+                </label>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <input
+                        type="password"
+                        className="input-field"
+                        placeholder={isConfigured ? "Введите ключ для перезаписи" : placeholder}
+                        value={formValues[service] || ""}
+                        onChange={(e) => setFormValues(prev => ({ ...prev, [service]: e.target.value }))}
+                        style={{ flex: 1 }}
+                    />
+                    <button
+                        className="btn-dark"
+                        onClick={() => handleSave(service)}
+                        disabled={saving || !formValues[service]}
+                        style={{ padding: "0 1rem", height: "48px", borderRadius: "12px", display: "flex", gap: "0.5rem", alignItems: "center" }}
+                    >
+                        {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Сохранить
+                    </button>
+                </div>
+            </div>
+        );
     };
 
     return (
         <>
             <header className="page-header">
-                <h1 className="title font-extrabold">Нейросети</h1>
+                <h1 className="title font-extrabold">Нейросети и Интеграции</h1>
                 <div className="user-profile">
                     <div className="avatar" />
                     <span className="font-bold" style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>
@@ -37,55 +103,47 @@ export default function SettingsPage() {
                 </div>
             </header>
 
-            <div style={{ display: "flex", justifyContent: "flex-start", marginTop: "2rem" }}>
-                <div className="card" style={{ maxWidth: "800px", margin: 0, padding: "2.5rem" }}>
-                    <p className="subtitle" style={{ fontSize: "0.95rem" }}>
-                        Выберите, какая модель будет писать объявления для Директа. Вы можете добавить любой OpenAI-совместимый провайдер.
-                    </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "2rem", marginTop: "2rem", maxWidth: "800px" }}>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
-                        {/* YandexGPT Row */}
-                        <div className={`setting-row ${yandexActive ? "active" : ""}`}>
-                            <div className="setting-info">
-                                <div className="setting-icon dark">Y</div>
-                                <div className="setting-text">
-                                    <h4>YandexGPT Pro 5.1</h4>
-                                    <p className="success">Активна · Базовая интеграция</p>
-                                </div>
-                            </div>
-                            <div className={`toggle ${yandexActive ? "on" : ""}`} onClick={toggleYandex}>
-                                <div className="toggle-dot" />
-                            </div>
-                        </div>
-
-                        {/* GigaChat Row */}
-                        <div className={`setting-row ${gigaActive ? "active" : ""}`}>
-                            <div className="setting-info">
-                                <div className="setting-icon light">G</div>
-                                <div className="setting-text">
-                                    <h4>GigaChat Pro</h4>
-                                    <p>Не авторизована · Нажмите, чтобы добавить Authorization Key</p>
-                                </div>
-                            </div>
-                            <div className={`toggle ${gigaActive ? "on" : ""}`} onClick={toggleGiga}>
-                                <div className="toggle-dot" />
-                            </div>
+                {/* YandexGPT Block */}
+                <div className="card" style={{ margin: 0, padding: "2rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem" }}>
+                        <div className="setting-icon dark">Y</div>
+                        <div>
+                            <h3 className="font-bold" style={{ fontSize: "1.1rem" }}>YandexGPT API</h3>
+                            <p className="subtitle">Для генерации семантики и объявлений</p>
                         </div>
                     </div>
-
-                    <button style={{
-                        marginTop: "1rem",
-                        width: "max-content",
-                        padding: "0 1.5rem",
-                        height: "48px",
-                        background: "var(--bg-input)",
-                        borderRadius: "var(--radius-md)",
-                        fontWeight: "700",
-                        fontSize: "0.95rem"
-                    }}>
-                        + Добавить OpenAI-совместимую модель
-                    </button>
+                    {renderKeyInput("yandexgpt", "API-ключ сервисного аккаунта")}
+                    {renderKeyInput("yandex_gpt_folder_id", "Идентификатор каталога (Folder ID)")}
                 </div>
+
+                {/* GigaChat Block */}
+                <div className="card" style={{ margin: 0, padding: "2rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem" }}>
+                        <div className="setting-icon light" style={{ background: "#21A038", color: "#fff" }}>G</div>
+                        <div>
+                            <h3 className="font-bold" style={{ fontSize: "1.1rem" }}>GigaChat API</h3>
+                            <p className="subtitle">Альтернативная модель от Сбера</p>
+                        </div>
+                    </div>
+                    {renderKeyInput("gigachat", "Авторизационные данные (Credentials)")}
+                    {renderKeyInput("gigachat_scope", "Scope (GIGACHAT_API_PERS или GIGACHAT_API_CORP)")}
+                </div>
+
+                {/* Yandex Direct Block */}
+                <div className="card" style={{ margin: 0, padding: "2rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem" }}>
+                        <div className="setting-icon light" style={{ background: "#FFCC00", color: "#000" }}>Д</div>
+                        <div>
+                            <h3 className="font-bold" style={{ fontSize: "1.1rem" }}>Яндекс.Директ API</h3>
+                            <p className="subtitle">Для аудита и загрузки кампаний</p>
+                        </div>
+                    </div>
+                    {renderKeyInput("yandex_direct", "OAuth-токен")}
+                    {renderKeyInput("yandex_direct_login", "Логин клиента (без @yandex.ru)")}
+                </div>
+
             </div>
         </>
     );

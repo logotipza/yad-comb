@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/lib/store";
+import { api } from "@/lib/api";
 import { SortableItem } from "@/components/SortableItem";
 import {
     DndContext,
@@ -28,19 +29,18 @@ interface Keyword {
     text: string;
 }
 
-const INITIAL_KEYWORDS: Keyword[] = [
-    { id: "1", text: "купить квартиру в москве" },
-    { id: "2", text: "квартиры от застройщика" },
-    { id: "3", text: "новостройки бизнес класс" },
-    { id: "4", text: "жк премиум класс" },
-];
+interface Ad {
+    title: string;
+    text: string;
+}
 
 export default function DashboardPage() {
     const [state, setState] = useState<DashboardState>("idle");
     const [url, setUrl] = useState("");
-    const [businessContext, setBusinessContext] = useState("Мы продаем новостройки бизнес-класса в Москве. Наше УТП: закрытая территория, паркинг, скидка 10% до конца месяца.");
-    const [keywords, setKeywords] = useState<Keyword[]>(INITIAL_KEYWORDS);
-    const [progressText, setProgressText] = useState("Инициируем YandexGPT...");
+    const [businessContext, setBusinessContext] = useState("");
+    const [keywords, setKeywords] = useState<Keyword[]>([]);
+    const [ads, setAds] = useState<Ad[]>([]);
+    const [progressText, setProgressText] = useState("");
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -49,51 +49,74 @@ export default function DashboardPage() {
         })
     );
 
-    const startAnalysis = () => {
+    const startAnalysis = async () => {
         if (!url) {
             toast.error("Ошибка", "Введите URL сайта для начала");
             return;
         }
         setState("analyzing_business");
-        toast.info("Анализ начат", `Нейросеть изучает контент сайта ${url}`);
+        toast.info("Анализ", `Нейросеть изучает ${url}`);
 
-        setTimeout(() => {
+        try {
+            const res = await api.llm.generate(
+                "yandexgpt",
+                `Ты маркетолог. Пользователь хочет запустить рекламу для сайта: ${url}. Напиши краткое описание бизнеса (2-3 предложения), которое мы будем использовать для создания контекстной рекламы. Выдели нишу и УТП. Если не можешь перейти по ссылке, предположи деятельность по домену.`
+            );
+            setBusinessContext(res.text);
             setState("confirm_business");
-            toast.success("Готово", "ИИ сформировал понимание вашего бизнеса. Проверьте и подтвердите.");
-        }, 3000);
+            toast.success("Готово", "ИИ сформировал понимание вашего бизнеса.");
+        } catch (error: any) {
+            toast.error("Ошибка ИИ", error.message);
+            setState("idle");
+        }
     };
 
-    const startGeneration = () => {
+    const startGeneration = async () => {
         setState("generating");
-        const steps = [
-            "Подбор базы ключевых слов Wordstat...",
-            "Группировка и минусация...",
-            "Создание кликабельных креативов...",
-            "Финальная сборка кампании..."
-        ];
 
-        let i = 0;
-        const interval = setInterval(() => {
-            if (i < steps.length) {
-                setProgressText(steps[i]);
-                i++;
-            } else {
-                clearInterval(interval);
-                setState("results");
-                toast.success("Успешно", "Кампания сгенерирована!");
-            }
-        }, 1500);
+        try {
+            setProgressText("ИИ подбирает ключевые слова...");
+            const kwRes = await api.llm.generate(
+                "yandexgpt",
+                `Сгенерируй 5 целевых ключевых фраз для Яндекс.Директа по этому описанию бизнеса: ${businessContext}. Выведи ТОЛЬКО сами фразы, каждую с новой строки, без нумерации, маркеров и лишних слов.`
+            );
+
+            const fetchedKeywords = kwRes.text.split('\n')
+                .map((k: string) => k.trim().replace(/^- /g, '').replace(/^\d+\.\s*/g, ''))
+                .filter((k: string) => k.length > 0)
+                .map((k: string, i: number) => ({ id: String(i), text: k }));
+
+            setKeywords(fetchedKeywords.length > 0 ? fetchedKeywords : [{ id: "1", text: "не удалось сгенерировать" }]);
+
+            setProgressText("ИИ пишет кликабельные объявления...");
+            const adsRes = await api.llm.generate(
+                "yandexgpt",
+                `Напиши 2 варианта рекламного объявления для Директа для бизнеса: ${businessContext}. 
+Формат строго такой:
+Заголовок: [Текст заголовка]
+Текст: [Текст объявления]
+`
+            );
+
+            // Simple parser for Ads
+            const adBlocks = adsRes.text.split(/Заголовок:/i).slice(1);
+            const fetchedAds = adBlocks.map((block: string) => {
+                const textSplit = block.split(/Текст:/i);
+                return {
+                    title: textSplit[0]?.trim() || "Заголовок",
+                    text: textSplit[1]?.trim() || "Текст"
+                };
+            });
+
+            setAds(fetchedAds.length > 0 ? fetchedAds : [{ title: "Пример заголовка", text: "Пример текста" }]);
+
+            setState("results");
+            toast.success("Успешно", "Кампания сгенерирована!");
+        } catch (error: any) {
+            toast.error("Ошибка генерации", error.message);
+            setState("confirm_business");
+        }
     };
-
-    useEffect(() => {
-        // This useEffect is now only for cleanup if the state changes away from 'generating'
-        // The interval logic is moved to startGeneration
-        // However, if startGeneration is called, and then state changes, the interval needs to be cleared.
-        // So, this useEffect can remain to clear any active interval if the component unmounts or state changes.
-        // For now, it's effectively empty as the interval is managed within startGeneration.
-        // If we want to clear the interval when state changes *from* generating, we'd need to store the interval ID.
-        // For simplicity, let's assume startGeneration handles its own interval lifecycle until completion.
-    }, [state]);
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -172,7 +195,7 @@ export default function DashboardPage() {
                             <div className="card" style={{ maxWidth: "800px", margin: 0, padding: "3rem 2rem", textAlign: "center" }}>
                                 <div className="skeleton" style={{ width: "60px", height: "60px", borderRadius: "50%", margin: "0 auto 1.5rem" }} />
                                 <h2 className="title font-bold" style={{ fontSize: "1.25rem", marginBottom: "1rem" }}>
-                                    ИИ парсит контент и изучает вашу нишу...
+                                    ИИ изучает контент сайта по URL...
                                 </h2>
                             </div>
                         </motion.div>
@@ -302,29 +325,19 @@ export default function DashboardPage() {
                                 <div className="card" style={{ padding: "2rem", margin: 0, maxWidth: "100%", background: "var(--bg-input)", boxShadow: "none" }}>
                                     <h3 className="font-bold" style={{ marginBottom: "1.5rem" }}>Сгенерированные объявления</h3>
 
-                                    <div style={{ background: "#fff", padding: "1.5rem", borderRadius: "12px", border: "1px solid var(--border-color)", marginBottom: "1rem" }}>
-                                        <div style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "0.5rem", color: "#0000CC" }}>
-                                            Купить квартиру в Москве — Бизнес-класс
+                                    {ads.map((ad, idx) => (
+                                        <div key={idx} style={{ background: "#fff", padding: "1.5rem", borderRadius: "12px", border: "1px solid var(--border-color)", marginBottom: "1rem" }}>
+                                            <div style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "0.5rem", color: "#0000CC" }}>
+                                                {ad.title}
+                                            </div>
+                                            <div style={{ color: "#006600", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+                                                реклама • {url || "https://example.com"}
+                                            </div>
+                                            <div style={{ fontSize: "0.95rem", color: "#333", lineHeight: 1.4 }}>
+                                                {ad.text}
+                                            </div>
                                         </div>
-                                        <div style={{ color: "#006600", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-                                            реклама • {url || "https://example.com"}
-                                        </div>
-                                        <div style={{ fontSize: "0.95rem", color: "#333", lineHeight: 1.4 }}>
-                                            Новостройки от надежного застройщика. Скидка 10% до конца месяца. Закрытая территория, паркинг, школа во дворе. Звоните!
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: "#fff", padding: "1.5rem", borderRadius: "12px", border: "1px solid var(--border-color)" }}>
-                                        <div style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "0.5rem", color: "#0000CC" }}>
-                                            Квартиры от застройщика | Ипотека от 4.5%
-                                        </div>
-                                        <div style={{ color: "#006600", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-                                            реклама • {url || "https://example.com"}
-                                        </div>
-                                        <div style={{ fontSize: "0.95rem", color: "#333", lineHeight: 1.4 }}>
-                                            Успейте забронировать видовую квартиру. Отделка под ключ, панорамные окна. Рядом метро и парк. Узнать цены на сайте.
-                                        </div>
-                                    </div>
+                                    ))}
 
                                 </div>
 

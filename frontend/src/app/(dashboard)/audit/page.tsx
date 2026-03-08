@@ -1,27 +1,50 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/lib/store";
-import { Search, ChevronRight, AlertTriangle, CheckCircle2, ArrowRight } from "lucide-react";
+import { api } from "@/lib/api";
+import { Search, ChevronRight, AlertTriangle, CheckCircle2, ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import Link from "next/link";
 
 type AuditState = "list" | "analyzing" | "results";
-
-const MOCK_CAMPAIGNS = [
-    { id: "1", name: "Поиск | Недвижимость МСК", spend: "12 500 ₽/мес", status: "Активна", ctr: "6.2%" },
-    { id: "2", name: "РСЯ | Ремаркетинг Дизайн", spend: "4 200 ₽/мес", status: "Активна", ctr: "0.8%" },
-    { id: "3", name: "Мастер Кампаний | Лиды", spend: "25 000 ₽/мес", status: "Активна", ctr: "3.4%" }
-];
 
 export default function AuditPage() {
     const [state, setState] = useState<AuditState>("list");
     const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
 
+    const [campaigns, setCampaigns] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    useEffect(() => {
+        loadCampaigns();
+    }, []);
+
+    const loadCampaigns = async () => {
+        try {
+            setLoading(true);
+            setErrorMsg(null);
+            const data = await api.direct.getCampaigns();
+
+            if (data.result && data.result.Campaigns) {
+                setCampaigns(data.result.Campaigns);
+            } else {
+                setCampaigns([]);
+            }
+        } catch (error: any) {
+            setErrorMsg(error.message);
+            toast.error("Ошибка", error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const startAudit = (campaign: any) => {
         setSelectedCampaign(campaign);
         setState("analyzing");
 
-        // Эмуляция анализа
+        // Эмуляция анализа кампании ИИ (В будущем подключим к /api/llm/generate)
         setTimeout(() => {
             setState("results");
             toast.info("Анализ завершен", "Найдено 3 критических рекомендации");
@@ -39,7 +62,7 @@ export default function AuditPage() {
                 <h1 className="title font-extrabold">
                     {state === "list" && "Аудит кампаний"}
                     {state === "analyzing" && "ИИ Анализирует..."}
-                    {state === "results" && `Результаты аудита: ${selectedCampaign?.name}`}
+                    {state === "results" && `Результаты аудита: ${selectedCampaign?.Name}`}
                 </h1>
                 <div className="user-profile">
                     <div className="avatar" />
@@ -61,34 +84,58 @@ export default function AuditPage() {
                             exit={{ opacity: 0, scale: 0.95 }}
                         >
                             <div className="card" style={{ maxWidth: "800px", margin: 0 }}>
-                                <div style={{ marginBottom: "1.5rem", display: "flex", gap: "1rem" }}>
-                                    <div className="input-group" style={{ flex: 1 }}>
-                                        <Search size={20} color="var(--text-light)" />
-                                        <input type="text" className="input-field" placeholder="Поиск кампании..." style={{ border: 'none', paddingLeft: '0.5rem' }} />
+                                {loading ? (
+                                    <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}>
+                                        <Loader2 className="animate-spin" size={32} color="var(--brand-yellow)" />
                                     </div>
-                                </div>
-
-                                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                                    {MOCK_CAMPAIGNS.map(c => (
-                                        <div
-                                            key={c.id}
-                                            className="setting-row"
-                                            style={{ cursor: "pointer", transition: "all 0.2s" }}
-                                            onClick={() => startAudit(c)}
-                                            onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--text-main)"}
-                                            onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}
-                                        >
-                                            <div className="setting-info" style={{ width: "100%" }}>
-                                                <div className="setting-icon dark">{c.name.charAt(0)}</div>
-                                                <div className="setting-text" style={{ flex: 1 }}>
-                                                    <h4>{c.name}</h4>
-                                                    <p>Расход: {c.spend} · CTR: {c.ctr}</p>
-                                                </div>
-                                                <ChevronRight color="var(--text-light)" />
+                                ) : errorMsg ? (
+                                    <div style={{ textAlign: "center", padding: "2rem" }}>
+                                        <AlertTriangle size={48} color="var(--text-muted)" style={{ margin: "0 auto 1rem" }} />
+                                        <h3 className="font-bold" style={{ marginBottom: "0.5rem" }}>Не удалось загрузить кампании</h3>
+                                        <p style={{ color: "var(--text-light)", marginBottom: "1.5rem" }}>{errorMsg}</p>
+                                        <Link href="/settings">
+                                            <button className="btn-dark">Перейти в настройки</button>
+                                        </Link>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ marginBottom: "1.5rem", display: "flex", gap: "1rem" }}>
+                                            <div className="input-group" style={{ flex: 1 }}>
+                                                <Search size={20} color="var(--text-light)" />
+                                                <input type="text" className="input-field" placeholder="Поиск кампании..." style={{ border: 'none', paddingLeft: '0.5rem' }} />
                                             </div>
+                                            <button className="btn-dark" onClick={loadCampaigns} style={{ padding: "0 1rem", height: "48px", background: "var(--bg-input)", color: "#000", border: "1px solid var(--border-color)" }}>
+                                                <RefreshCw size={18} />
+                                            </button>
                                         </div>
-                                    ))}
-                                </div>
+
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                                            {campaigns.length === 0 ? (
+                                                <p style={{ textAlign: "center", color: "var(--text-light)", padding: "2rem" }}>Кампаний не найдено</p>
+                                            ) : (
+                                                campaigns.map(c => (
+                                                    <div
+                                                        key={c.Id}
+                                                        className="setting-row"
+                                                        style={{ cursor: "pointer", transition: "all 0.2s" }}
+                                                        onClick={() => startAudit(c)}
+                                                        onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--text-main)"}
+                                                        onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}
+                                                    >
+                                                        <div className="setting-info" style={{ width: "100%" }}>
+                                                            <div className="setting-icon dark">{c.Name.charAt(0)}</div>
+                                                            <div className="setting-text" style={{ flex: 1 }}>
+                                                                <h4>{c.Name}</h4>
+                                                                <p>Статус: {c.State} · Тип: {c.Type?.replace("_CAMPAIGN", "")}</p>
+                                                            </div>
+                                                            <ChevronRight color="var(--text-light)" />
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </motion.div>
                     )}
@@ -123,7 +170,6 @@ export default function AuditPage() {
                             style={{ display: "flex", flexDirection: "column", gap: "2rem", maxWidth: "1000px" }}
                         >
                             <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-                                {/* Summary Card */}
                                 <div className="card" style={{ flex: 1, margin: 0, background: "#FEF2F2", borderColor: "#FEE2E2" }}>
                                     <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", color: "#B91C1C", marginBottom: "1rem" }}>
                                         <AlertTriangle size={24} />
@@ -135,7 +181,6 @@ export default function AuditPage() {
                                 </div>
                             </div>
 
-                            {/* Recommendation 1: Sites to exclude */}
                             <div className="card" style={{ margin: 0 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
                                     <div>
@@ -153,7 +198,6 @@ export default function AuditPage() {
                                 </div>
                             </div>
 
-                            {/* Recommendation 2: Rewrite Ads */}
                             <div className="card" style={{ margin: 0 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
                                     <div>
