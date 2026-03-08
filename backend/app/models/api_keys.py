@@ -1,0 +1,35 @@
+"""ORM-модель для хранения API-ключей разных сервисов."""
+
+from datetime import datetime
+
+from sqlalchemy import String, DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import Base
+
+
+class ApiKeyStore(Base):
+    """Хранилище API-ключей.
+
+    Каждая запись — один ключ к определённому сервису.
+    Ключ хранится в зашифрованном виде (Fernet) в поле `encrypted_key`.
+    """
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    service: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, comment="yandexgpt | gigachat | yandex_direct"
+    )
+    encrypted_key: Mapped[str] = mapped_column(
+        String(512), comment="Зашифрованный Fernet-ключ"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"<ApiKeyStore service={self.service!r}>"

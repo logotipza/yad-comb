@@ -1,0 +1,30 @@
+# Web framework
+fastapi==0.115.*
+uvicorn[standard]==0.34.*
+pydantic-settings==2.*
+
+# Database
+sqlalchemy[asyncio]==2.*
+asyncpg==0.30.*
+alembic==1.*
+
+# Redis
+redis[hiredis]==5.*
+
+# HTTP client
+httpx==0.28.*
+
+# LLM SDKs
+yandex-ai-studio-sdk>=0.19
+gigachat>=0.1
+
+# Security
+cryptography==44.*
+python-dotenv==1.*
+
+# Testing
+pytest==8.*
+pytest-asyncio==0.25.*
+pytest-cov==6.*
+httpx  # для TestClient
+aiosqlite==0.20.*
